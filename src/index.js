@@ -12,6 +12,7 @@ const { logger } = require("./utils/logger");
 const { createMempoolWatcher } = require("./services/mempoolWatcher");
 const { createRescueEngine } = require("./services/rescueEngine");
 const { RELAYS } = require("./config/constants");
+const { isProduction } = require("./utils/shared");
 
 // Configuration from environment
 const CONFIG = {
@@ -40,6 +41,12 @@ function validateConfig() {
   }
   if (!CONFIG.rescueAddress) {
     errors.push("RESCUE_ADDRESS is required");
+  } else if (!ethers.utils.isAddress(CONFIG.rescueAddress)) {
+    errors.push("RESCUE_ADDRESS must be a valid Ethereum address");
+  }
+  // Only require flashbotsAuthSigner in production - allow wallet fallback in development
+  if (!CONFIG.flashbotsAuthSigner && isProduction()) {
+    errors.push("FLASHBOTS_AUTH_SIGNER is required for production use (get one at https://docs.flashbots.net/flashbots-protect/quick-start)");
   }
   
   if (errors.length > 0) {
@@ -60,6 +67,7 @@ class RescueBot {
     this.mempoolWatcher = null;
     this.rescueEngine = null;
     this.isRunning = false;
+    this.attackModeTimeout = null; // Track attack mode timeout for cleanup
   }
 
   /**
@@ -117,10 +125,27 @@ class RescueBot {
       await this.rescueEngine.rescue(attackTx);
     } catch (error) {
       logger.error("Rescue failed:", error.message);
+      // Don't re-throw - allow bot to continue monitoring
     }
     
-    // Reset attack mode
-    this.rescueEngine.setAttackMode(false);
+    // Reset attack mode after a delay to allow for multiple rescue attempts
+    // Clear any existing timeout to prevent memory leaks or conflicting resets
+    const rawTimeout = process.env.ATTACK_MODE_TIMEOUT_MS || '300000';
+    let attackModeTimeoutMs = parseInt(rawTimeout, 10);
+    if (isNaN(attackModeTimeoutMs) || attackModeTimeoutMs <= 0) {
+      logger.warn(`Invalid ATTACK_MODE_TIMEOUT_MS value: "${rawTimeout}", using default 300000ms`);
+      attackModeTimeoutMs = 300000;
+    }
+    if (this.attackModeTimeout) {
+      clearTimeout(this.attackModeTimeout);
+    }
+    this.attackModeTimeout = setTimeout(() => {
+      // Add null check for safety - rescueEngine could be null if stopped
+      if (this.rescueEngine) {
+        this.rescueEngine.setAttackMode(false);
+      }
+      this.attackModeTimeout = null;
+    }, attackModeTimeoutMs); // Reset attack mode after delay to allow for multiple rescue attempts
   }
 
   /**
@@ -164,6 +189,11 @@ class RescueBot {
    */
   stop() {
     this.isRunning = false;
+    // Clear any pending attack mode timeout to prevent callbacks on dead objects
+    if (this.attackModeTimeout) {
+      clearTimeout(this.attackModeTimeout);
+      this.attackModeTimeout = null;
+    }
     if (this.mempoolWatcher) {
       this.mempoolWatcher.stop();
     }

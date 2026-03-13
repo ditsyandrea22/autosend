@@ -8,6 +8,7 @@ const { ethers } = require("ethers");
 const { RELAYS, BLOCKS, BUNDLE } = require("../config/constants");
 const { logger } = require("../utils/logger");
 const { sleep, withRetry } = require("../utils/sleep");
+const { isProduction } = require("../utils/shared");
 
 /**
  * FlashbotsService - Manages bundle sending to Flashbots relays
@@ -35,7 +36,11 @@ class FlashbotsService {
     if (this.isInitialized) return;
 
     if (!this.authSigner) {
-      // Use wallet as auth signer if not provided
+      // Require auth signer for production, but allow wallet fallback for development
+      if (isProduction()) {
+        throw new Error("FLASHBOTS_AUTH_SIGNER is required for production use. Get one at: https://docs.flashbots.net/flashbots-protect/quick-start");
+      }
+      logger.warn("FLASHBOTS_AUTH_SIGNER not provided - using wallet as authSigner. NOT FOR PRODUCTION USE!");
       this.authSigner = this.wallet;
     }
 
@@ -72,7 +77,12 @@ class FlashbotsService {
   async _switchToNextRelay() {
     this.isInitialized = false;
     this.currentRelayIndex = (this.currentRelayIndex + 1) % this.relays.length;
-    await this.initialize();
+    try {
+      await this.initialize();
+    } catch (error) {
+      logger.error("Failed to switch relay:", error.message);
+      throw error;
+    }
   }
 
   /**
