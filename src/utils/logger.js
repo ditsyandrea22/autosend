@@ -1,94 +1,88 @@
 /**
- * Logger Utility
- * Production-grade logging with timestamps and levels
+ * Logger
+ * Unified logging utility using pino
  */
 
-const { LOG } = require("../config/constants");
+const pino = require('pino');
 
-class Logger {
-  constructor(context = "Bot") {
-    this.context = context;
-    this.levels = { debug: 0, info: 1, warn: 2, error: 3 };
-    this.currentLevel = LOG.LEVEL;
-  }
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+const LOG_PRETTY = process.env.LOG_PRETTY === 'true';
 
-  _shouldLog(level) {
-    return this.levels[level] >= this.levels[this.currentLevel];
-  }
+// Create logger
+const logger = pino({
+  level: LOG_LEVEL,
+  transport: LOG_PRETTY ? {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'HH:MM:ss Z',
+      ignore: 'pid,hostname',
+    },
+  } : undefined,
+  formatters: {
+    level: (label) => {
+      return { level: label };
+    },
+  },
+  timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
+});
 
-  _formatMessage(level, ...args) {
-    const timestamp = LOG.TIMESTAMPS ? new Date().toISOString() : "";
-    const levelStr = level.toUpperCase().padEnd(5);
-    const contextStr = `[${this.context}]`;
-    
-    let message = "";
-    for (const arg of args) {
-      if (typeof arg === "object") {
-        message += JSON.stringify(arg, null, 2) + " ";
-      } else {
-        message += String(arg) + " ";
-      }
-    }
-    
-    return `${timestamp} ${levelStr} ${contextStr} ${message}`.trim();
-  }
-
-  debug(...args) {
-    if (this._shouldLog("debug")) {
-      console.debug(this._formatMessage("debug", ...args));
-    }
-  }
-
-  info(...args) {
-    if (this._shouldLog("info")) {
-      console.log(this._formatMessage("info", ...args));
-    }
-  }
-
-  warn(...args) {
-    if (this._shouldLog("warn")) {
-      console.warn(this._formatMessage("warn", ...args));
-    }
-  }
-
-  error(...args) {
-    if (this._shouldLog("error")) {
-      console.error(this._formatMessage("error", ...args));
-    }
-  }
-
-  // Special methods for rescue operations
-  rescueAttempt(txHash, amount) {
-    this.info("🚨 RESCUE ATTEMPT:", { txHash, amount });
-  }
-
-  bundleSent(blockNumber) {
-    this.info("📦 Bundle sent for block:", blockNumber);
-  }
-
-  bundleIncluded(blockNumber, txHash) {
-    this.info("✅ Bundle included in block:", blockNumber, { txHash });
-  }
-
-  attackDetected(address) {
-    this.warn("⚠️  ATTACK DETECTED:", address);
-  }
-
-  gasUpdate(maxFee, priorityFee) {
-    this.debug("⛽ Gas updated:", { maxFee: maxFee.toString(), priorityFee: priorityFee.toString() });
-  }
+/**
+ * Create child logger with context
+ */
+function child(options) {
+  return logger.child(options);
 }
 
 /**
- * Create a logger instance
- * @param {string} context - Context/name for the logger
- * @returns {Logger}
+ * Log debug message
  */
-function createLogger(context) {
-  return new Logger(context);
+function debug(message, ...args) {
+  logger.debug(message, ...args);
 }
 
-// Default logger
-const logger = new Logger("RescueBot");
+/**
+ * Log info message
+ */
+function info(message, ...args) {
+  logger.info(message, ...args);
+}
 
-module.exports = { Logger, createLogger, logger };
+/**
+ * Log warn message
+ */
+function warn(message, ...args) {
+  logger.warn(message, ...args);
+}
+
+/**
+ * Log error message
+ */
+function error(message, ...args) {
+  logger.error(message, ...args);
+}
+
+/**
+ * Log fatal message
+ */
+function fatal(message, ...args) {
+  logger.fatal(message, ...args);
+}
+
+/**
+ * Log with custom level
+ */
+function log(level, message, ...args) {
+  logger[level](message, ...args);
+}
+
+module.exports = {
+  logger,
+  child,
+  debug,
+  info,
+  warn,
+  error,
+  fatal,
+  log,
+};

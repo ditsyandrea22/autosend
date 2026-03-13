@@ -1,10 +1,11 @@
 /**
- * Sleep Utility
- * Promise-based delay functions
+ * Sleep utility
+ * Promise-based sleep function
  */
 
 /**
  * Sleep for specified milliseconds
+ * 
  * @param {number} ms - Milliseconds to sleep
  * @returns {Promise<void>}
  */
@@ -14,6 +15,7 @@ function sleep(ms) {
 
 /**
  * Sleep for specified seconds
+ * 
  * @param {number} seconds - Seconds to sleep
  * @returns {Promise<void>}
  */
@@ -22,44 +24,65 @@ function sleepSeconds(seconds) {
 }
 
 /**
- * Sleep until a specific timestamp
- * @param {number} targetTimestamp - Target Unix timestamp (in ms)
+ * Sleep with jitter
+ * 
+ * @param {number} ms - Base milliseconds
+ * @param {number} jitterFactor - Jitter factor (0-1)
+ * @returns {Promise<void>}
+ */
+function sleepWithJitter(ms, jitterFactor = 0.1) {
+  const jitter = ms * jitterFactor * Math.random();
+  return sleep(ms + jitter);
+}
+
+/**
+ * Sleep until specific timestamp
+ * 
+ * @param {number} targetTimestamp - Target timestamp
  * @returns {Promise<void>}
  */
 async function sleepUntil(targetTimestamp) {
   const now = Date.now();
   const delay = targetTimestamp - now;
+  
   if (delay > 0) {
     await sleep(delay);
   }
 }
 
 /**
+ * Sleep until next block
+ * 
+ * @param {number} avgBlockTime - Average block time in seconds
+ * @returns {Promise<void>}
+ */
+async function sleepUntilNextBlock(avgBlockTime = 12) {
+  await sleepSeconds(avgBlockTime);
+}
+
+/**
  * Retry with exponential backoff
+ * 
  * @param {Function} fn - Function to retry
- * @param {number} maxRetries - Maximum retry attempts
- * @param {number} initialDelay - Initial delay in ms
+ * @param {number} maxRetries - Maximum retries
+ * @param {number} baseDelay - Base delay in ms
  * @param {number} maxDelay - Maximum delay in ms
- * @param {Function} shouldRetry - Optional function to determine if retry is needed
  * @returns {Promise<any>}
  */
-async function withRetry(
-  fn,
-  maxRetries = 3,
-  initialDelay = 1000,
-  maxDelay = 10000,
-  shouldRetry = () => true
-) {
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000, maxDelay = 30000) {
   let lastError;
   
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
       
-      if (attempt < maxRetries && shouldRetry(error)) {
-        const delay = Math.min(initialDelay * Math.pow(2, attempt), maxDelay);
+      if (attempt < maxRetries - 1) {
+        const delay = Math.min(
+          baseDelay * Math.pow(2, attempt),
+          maxDelay
+        );
         await sleep(delay);
       }
     }
@@ -68,24 +91,11 @@ async function withRetry(
   throw lastError;
 }
 
-/**
- * Wait for a condition with timeout
- * @param {Function} condition - Function that returns boolean
- * @param {number} timeout - Timeout in ms
- * @param {number} checkInterval - Check interval in ms
- * @returns {Promise<boolean>}
- */
-async function waitFor(condition, timeout = 30000, checkInterval = 100) {
-  const startTime = Date.now();
-  
-  while (Date.now() - startTime < timeout) {
-    if (await condition()) {
-      return true;
-    }
-    await sleep(checkInterval);
-  }
-  
-  return false;
-}
-
-module.exports = { sleep, sleepSeconds, sleepUntil, withRetry, waitFor };
+module.exports = {
+  sleep,
+  sleepSeconds,
+  sleepWithJitter,
+  sleepUntil,
+  sleepUntilNextBlock,
+  retryWithBackoff,
+};

@@ -1,149 +1,237 @@
-# MEV-Grade Ethereum Rescue Bot
+# MEV Rescue Bot
 
-A comprehensive wallet rescue system that monitors for drainer attacks and executes emergency fund rescues using private Flashbots bundles.
+<div align="center">
 
-## ⚠️ WARNING: Educational Use Only
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Node.js](https://img.shields.io/badge/node-%3E%3D20-green)
+![License](https://img.shields.io/badge/license-MIT-yellow)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)
 
-**This code is for educational and defensive purposes only.** Using this to rescue funds from wallets you don't own without authorization is illegal. This bot is designed to:
-- Protect wallets YOU own from drainer attacks
-- Monitor your own wallets for suspicious transactions
-- Execute emergency rescues of YOUR funds
+</div>
+
+## Overview
+
+Professional multi-chain MEV rescue bot for automated ETH, ERC20, and NFT rescue operations. The bot monitors wallets for suspicious activity and executes rescue transactions through multiple relay networks (Flashbots, bloXroute, Eden Network) to maximize success probability.
 
 ## Features
 
-- **AI-Based Drainer Detection** - Uses heuristic analysis to detect common drainer patterns (approval exploits, malicious contracts)
-- **Mempool Monitoring** - Watches pending transactions involving protected wallets
-- **Flashbots Integration** - Sends private bundles to avoid public mempool and front-running
-- **Multi-Builder Support** - Broadcasts to multiple builders for higher inclusion probability
-- **Gas Escalation** - Automatic gas price escalation on failed attempts
-- **Nonce Locking** - Prevents nonce collisions during concurrent operations
-- **Multi-RPC Redundancy** - Falls back to backup RPC endpoints
+### Core Capabilities
+- **Multi-Chain Support**: Ethereum, Base, Polygon, BSC
+- **Multi-Relay Broadcasting**: Flashbots, bloXroute, Eden Network, Beaverbuild
+- **Real-Time Mempool Monitoring**: Instant detection of wallet drain attempts
+- **Automated Rescue Strategies**: ETH, ERC20, NFT, and Approval revocation
+
+### Advanced Features
+- **Bundle Simulation**: Simulate rescue bundles before submission
+- **Gas Escalation**: Automatic gas price adjustment for competitive execution
+- **Retry Engine**: Automatic retry with exponential backoff
+- **Nonce Management**: Proper nonce tracking and gap detection
+- **Private Mempool Access**: Direct access to private relay mem pools
+
+### Monitoring & Alerts
+- **Prometheus Metrics**: Full observability with Prometheus + Grafana
+- **Telegram Alerts**: Real-time notifications for attacks and rescues
+- **Health Endpoints**: `/health` and `/metrics` endpoints
+- **Dashboard**: Real-time monitoring dashboard
 
 ## Architecture
 
 ```
 rescue-bot/
- ├ core/                    # Core orchestration
- │   ├ mempool-engine.js    # Mempool monitoring
- │   ├ gasStrategy.js       # Gas estimation
- │   └ rescue-orchestrator.js
- ├ rescue/                  # Asset rescue operations
- │   ├ eth-rescue.js        # ETH transfers
- │   ├ erc20-rescue.js     # ERC20 token rescues
- │   ├ nft-rescue.js       # NFT rescues
- │   └ approval-revoke.js  # Approval revocations
- ├ strategy/                # Execution strategies
- │   ├ gas-predictor.js    # Gas price prediction
- │   ├ bundle-optimizer.js # Bundle optimization
- │   └ block-targeter.js   # Block targeting
- ├ relay/                   # Builder communication
- │   ├ flashbots-relay.js  # Flashbots integration
- │   └ builder-broadcast.js
- ├ infra/                   # Infrastructure
- │   ├ multi-rpc.js        # RPC redundancy
- │   └ latency-monitor.js
- ├ ai/                      # AI/ML components
- │   ├ drainer-classifier.js
- │   └ tx-risk-analyzer.js
- └ config/
-     └ env.js              # Configuration
+├── config/           # Chain and relay configurations
+├── src/
+│   ├── core/         # Bot orchestration and main logic
+│   ├── rpc/          # Provider cluster management
+│   ├── detection/    # Wallet monitoring and attack detection
+│   ├── strategies/   # Rescue strategy implementations
+│   ├── gas/          # Gas oracle and escalation
+│   ├── bundle/       # Bundle building and simulation
+│   ├── relays/       # Multi-relay management
+│   ├── alerts/       # Telegram alerting
+│   ├── monitoring/   # Metrics and dashboard
+│   └── utils/        # Logger and helpers
+└── scripts/          # Deployment and utility scripts
 ```
 
-## Prerequisites
+## Quick Start
 
-- Node.js v18+
-- An Ethereum Mainnet RPC URL (Infura, Alchemy, etc.)
-- A Flashbots auth signer (get one at https://docs.flashbots.net/flashbots-protect/quick-start)
-- The wallet private key you want to protect
+### Prerequisites
 
-## Setup
+- Node.js >= 20.0.0
+- npm or yarn
+- Docker & Docker Compose (for production)
 
-1. Install dependencies:
+### Installation
+
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd mev-rescue-bot
+
+# Install dependencies
 npm install
-```
 
-2. Copy the environment template:
-```bash
+# Copy environment configuration
 cp .env.example .env
+
+# Edit .env with your configuration
+nano .env
 ```
 
-3. Edit `.env` with your configuration:
+### Configuration
+
+Edit `.env` with your specific values:
+
 ```env
-# Required
-RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID
-PRIVATE_KEY=your_private_key_without_0x_prefix
-TO_ADDRESS=0xrecipient_address_here
+# Wallet Configuration
+RESCUE_PRIVATE_KEY=your_private_key
+RESCUE_DESTINATION=0x...
+MONITORED_WALLETS=0x...,0x...
 
-# Required for Flashbots (get from https://docs.flashbots.net/)
-FLASHBOTS_AUTH_SIGNER=your_flashbots_auth_signer_private_key
+# RPC Endpoints
+ETH_RPC=https://...
+BASE_RPC=https://...
+POLYGON_RPC=https://...
+BSC_RPC=https://...
+
+# Relay Configuration
+FLASHBOTS_SIGNING_KEY=your-key
+
+# Telegram
+TELEGRAM_BOT_TOKEN=your-token
+TELEGRAM_CHAT_ID=your-chat-id
 ```
 
-4. Run the bot:
+### Development
+
 ```bash
-npm start
+# Start in development mode
+npm run dev
+
+# Build TypeScript
+npm run build
+
+# Start production
+npm run start:prod
 ```
 
-## How It Works
+### Docker Deployment
 
-### 1. Mempool Monitoring
-The bot subscribes to pending transactions and checks if any involve the protected wallet address.
+```bash
+# Build and start all services
+docker-compose up -d
 
-### 2. Drainer Detection
-Transactions are analyzed using:
-- Function selector matching (approve, setApprovalForAll, transferFrom)
-- Gas price analysis (unusually high gas = suspicious)
-- Contract age checking (new contracts = higher risk)
-- Multi-step attack pattern detection
+# View logs
+docker-compose logs -f rescue-bot
 
-### 3. Bundle Building
-When a drainer is detected, the bot builds a rescue bundle:
-- Revokes all token approvals
-- Transfers all ERC20 tokens
-- Transfers all NFTs
-- Transfers remaining ETH
+# Stop services
+docker-compose down
+```
 
-### 4. Private Submission
-The bundle is sent via:
-- Flashbots private relay (primary)
-- Multiple builder endpoints (for redundancy)
+## Usage
 
-### 5. Gas Escalation
-If the bundle fails simulation, gas prices are automatically escalated:
-- Attempt 1: 2x base gas
-- Attempt 2: 3x base gas
-- Attempt 3: 5x base gas
-- ... up to 21x
+### Basic Rescue Flow
 
-## Configuration Options
+1. **Wallet Monitoring**: Bot subscribes to mempool for monitored wallets
+2. **Attack Detection**: Detects outgoing transfers from monitored wallets
+3. **Rescue Planning**: Calculates optimal rescue transactions
+4. **Bundle Building**: Creates MEV bundle with rescue transactions
+5. **Multi-Relay Broadcast**: Sends bundle to multiple relays simultaneously
+6. **Confirmation**: Monitors for bundle inclusion in blocks
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RPC_URL` | Primary Ethereum RPC | Required |
-| `PRIVATE_KEY` | Wallet to protect | Required |
-| `TO_ADDRESS` | Destination for rescued funds | Required |
-| `FLASHBOTS_AUTH_SIGNER` | Flashbots auth wallet | Required |
-| `BLOCK_TARGET_STRATEGY` | fast/balanced/aggressive | balanced |
-| `GAS_MULTIPLIER` | Base gas multiplier | 6 |
-| `ENABLE_MEMPOOL_MONITORING` | Watch mempool | true |
+### Supported Rescue Types
 
-## Security Notes
+| Type | Description | Gas Estimate |
+|------|-------------|--------------|
+| ETH Rescue | Rescue remaining ETH balance | 21,000 gas |
+| ERC20 Rescue | Rescue ERC20 token balances | ~65,000 gas |
+| NFT Rescue | Rescue ERC721/ERC1155 NFTs | ~100,000 gas |
+| Approval Revoke | Revoke token approvals | ~50,000 gas |
 
-1. **Private Key Security**: This bot requires a private key to sign rescue transactions. For production use, consider:
-   - Hardware wallet integration
-   - Encrypted key storage
-   - Multisig setup
+## Monitoring
 
-2. **Flashbots Auth Signer**: This is a SEPARATE wallet from your rescue wallet. Get one from the Flashbots Protect dashboard.
+### Prometheus Metrics
 
-3. **Test First**: Always test with small amounts on testnet before using on mainnet.
+Access metrics at: `http://localhost:3000/metrics`
 
-4. **Monitor Closely**: This bot should run with active monitoring in case issues arise.
+Key metrics:
+- `rescue_bot_blocks_processed_total`
+- `rescue_bot_attacks_detected_total`
+- `rescue_bot_rescues_success_total`
+- `rescue_bot_rescues_failed_total`
+- `rescue_bot_gas_spent_total`
+- `rescue_bot_bundle_latency_seconds`
 
-## Disclaimer
+### Grafana Dashboard
 
-This software is provided "as is" without warranty of any kind. Use at your own risk. The authors are not responsible for any funds lost due to bugs, exploits, or misconfiguration.
+Access dashboard at: `http://localhost:3002`
+
+Pre-configured dashboards:
+- Block processing rate
+- Attack detection timeline
+- Rescue success rate
+- Gas usage analysis
+- Relay performance comparison
+
+### Health Check
+
+```bash
+curl http://localhost:3000/health
+# Response: {"status":"ok","timestamp":"..."}
+```
+
+## API Reference
+
+### REST Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/metrics` | GET | Prometheus metrics |
+| `/status` | GET | Bot status |
+| `/wallets` | GET | List monitored wallets |
+| `/rescues` | GET | Rescue history |
+
+## Troubleshooting
+
+### Common Issues
+
+1. **RPC Connection Errors**
+   - Check RPC endpoint availability
+   - Verify API keys are correct
+   - Ensure sufficient rate limits
+
+2. **Bundle Submission Failures**
+   - Check Flashbots/auth relayer credentials
+   - Verify sufficient gas balance
+   - Ensure nonce is correct
+
+3. **Detection Misses**
+   - Verify wallet addresses are correct
+   - Check RPC is not filtering pending transactions
+
+### Logs
+
+```bash
+# View bot logs
+docker-compose logs -f rescue-bot
+
+# View Prometheus logs
+docker-compose logs -f prometheus
+```
+
+## Security Considerations
+
+- **Private Key Security**: Store in environment variables, never commit
+- **Rate Limiting**: Respect RPC provider limits
+- **Gas Limits**: Always set appropriate gas limits
+- **Multi-Sig**: Consider using multi-sig for rescue destination
+- **Monitoring**: Enable alerts for suspicious activity
 
 ## License
 
-ISC
+MIT License - See [LICENSE](LICENSE) for details
+
+## Disclaimer
+
+This software is provided for educational and legitimate rescue purposes only. Users are responsible for compliance with applicable laws and regulations in their jurisdiction.

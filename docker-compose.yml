@@ -1,0 +1,139 @@
+# =============================================================================
+# MEV Rescue Bot - Docker Compose Configuration
+# =============================================================================
+# Production-ready multi-service deployment
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Main Rescue Bot Service
+  # ---------------------------------------------------------------------------
+  rescue-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: mev-rescue-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+    networks:
+      - rescue-network
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    depends_on:
+      prometheus:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: 4g
+    cpus: 2
+
+  # ---------------------------------------------------------------------------
+  # Prometheus Metrics Collection
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rescue-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    networks:
+      - rescue-network
+    ports:
+      - "9090:9090"
+
+  # ---------------------------------------------------------------------------
+  # Grafana Dashboard
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rescue-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3002
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    networks:
+      - rescue-network
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # Log Aggregation (Optional)
+  # ---------------------------------------------------------------------------
+  # loki:
+  #   image: grafana/loki:latest
+  #   container_name: rescue-loki
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./loki:/etc/loki
+  #     - loki-data:/loki
+  #   networks:
+  #     - rescue-network
+  #   ports:
+  #     - "3100:3100"
+
+  # ---------------------------------------------------------------------------
+  # Alert Manager (Optional)
+  # ---------------------------------------------------------------------------
+  # alertmanager:
+  #   image: prom/alertmanager:latest
+  #   container_name: rescue-alertmanager
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./alertmanager:/etc/alertmanager
+  #   networks:
+  #     - rescue-network
+  #   ports:
+  #     - "9093:9093"
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  rescue-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+# -----------------------------------------------------------------------------
+# Profiles (for optional services)
+# -----------------------------------------------------------------------------
+# Run with: docker compose --profile monitoring up
+# Run with: docker compose --profile logging up
