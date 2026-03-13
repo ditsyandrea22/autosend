@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const { NonceManager } = require("../utils/nonce-manager");
 
 /**
  * Approval ABI for revoke operations
@@ -18,6 +19,7 @@ class ApprovalRevoke {
     this.provider = provider;
     this.wallet = wallet;
     this.revokedApprovals = new Set();
+    this.nonceManager = new NonceManager(provider, wallet.address);
   }
 
   /**
@@ -56,6 +58,20 @@ class ApprovalRevoke {
       console.error(`[Approval Revoke] Error creating revoke tx for ${tokenAddress}:`, error.message);
       return null;
     }
+  }
+
+  /**
+   * Get nonce with lock
+   */
+  async getNonce() {
+    return await this.nonceManager.acquireNonce();
+  }
+
+  /**
+   * Reset nonce cache
+   */
+  resetNonceCache() {
+    this.nonceManager.resetCache();
   }
 
   /**

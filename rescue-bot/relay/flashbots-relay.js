@@ -1,5 +1,6 @@
 const { FlashbotsBundleProvider } = require("@flashbots/ethers-provider-bundle");
 const { ethers } = require("ethers");
+const { FLASHBOTS_AUTH_SIGNER } = require("../config/env");
 
 /**
  * Flashbots Relay - Handles Flashbots bundle submission
@@ -8,7 +9,17 @@ const { ethers } = require("ethers");
 class FlashbotsRelay {
   constructor(provider, authSigner = null) {
     this.provider = provider;
-    this.authSigner = authSigner || ethers.Wallet.createRandom();
+    // Use provided auth signer, or create from environment variable, or throw error
+    if (authSigner) {
+      this.authSigner = authSigner;
+    } else if (FLASHBOTS_AUTH_SIGNER) {
+      this.authSigner = new ethers.Wallet(FLASHBOTS_AUTH_SIGNER);
+    } else {
+      throw new Error(
+        "Flashbots auth signer required. Provide FLASHBOTS_AUTH_SIGNER in .env " +
+        "or pass authSigner to constructor. Get one at https://docs.flashbots.net/flashbots-protect/quick-start"
+      );
+    }
     this.flashbots = null;
     this.initialized = false;
   }
@@ -156,7 +167,13 @@ class FlashbotsRelay {
  * Simple sendBundle function as shown in architecture
  */
 async function sendBundle(wallet, tx, blockNumber) {
-  const authSigner = ethers.Wallet.createRandom();
+  const { FLASHBOTS_AUTH_SIGNER } = require("../config/env");
+  
+  if (!FLASHBOTS_AUTH_SIGNER) {
+    throw new Error("FLASHBOTS_AUTH_SIGNER is required in .env");
+  }
+  
+  const authSigner = new ethers.Wallet(FLASHBOTS_AUTH_SIGNER);
   const flashbots = await FlashbotsBundleProvider.create(
     wallet.provider,
     authSigner

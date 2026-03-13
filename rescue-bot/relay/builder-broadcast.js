@@ -1,4 +1,6 @@
 const { ethers } = require("ethers");
+const { FlashbotsBundleProvider } = require("@flashbots/ethers-provider-bundle");
+const { FLASHBOTS_AUTH_SIGNER } = require("../config/env");
 
 /**
  * Known builder endpoints
@@ -19,6 +21,21 @@ class BuilderBroadcast {
     this.provider = provider;
     this.activeBuilders = new Set();
     this.results = [];
+    this.flashbots = null;
+  }
+
+  /**
+   * Initialize Flashbots connection
+   */
+  async initFlashbots() {
+    if (this.flashbots) return;
+    
+    if (!FLASHBOTS_AUTH_SIGNER) {
+      throw new Error("FLASHBOTS_AUTH_SIGNER required in .env");
+    }
+    
+    const authSigner = new ethers.Wallet(FLASHBOTS_AUTH_SIGNER);
+    this.flashbots = await FlashbotsBundleProvider.create(this.provider, authSigner);
   }
 
   /**
@@ -62,6 +79,13 @@ class BuilderBroadcast {
       bloxroute: null,
       builder0x69: null,
     };
+
+    // Initialize Flashbots connection for this broadcast
+    try {
+      await this.initFlashbots();
+    } catch (error) {
+      console.error("[Builder Broadcast] Failed to init Flashbots:", error.message);
+    }
 
     // Note: Flashbots is the only one with official public API
     // Other builders would require private APIs or partnerships
@@ -121,17 +145,50 @@ class BuilderBroadcast {
   }
 
   /**
-   * Send to Flashbots (simplified)
+   * Send to Flashbots - actually sends the bundle
    */
   async sendToFlashbots(signedBundle, targetBlock) {
-    // This would use the Flashbots SDK in production
-    // For now, return a simulated success
-    return {
-      success: true,
-      builder: "flashbots",
-      targetBlock,
-      bundleHash: `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`,
-    };
+    if (!this.flashbots) {
+      try {
+        await this.initFlashbots();
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to init Flashbots: ${error.message}`,
+          builder: "flashbots",
+        };
+      }
+    }
+
+    try {
+      const response = await this.flashbots.sendRawBundle(signedBundle, targetBlock);
+      
+      // Wait for simulation result
+      const simulation = await response.simulate();
+      
+      if (simulation.error) {
+        return {
+          success: false,
+          error: `Simulation failed: ${simulation.error}`,
+          builder: "flashbots",
+          targetBlock,
+        };
+      }
+
+      return {
+        success: true,
+        builder: "flashbots",
+        targetBlock,
+        bundleHash: response.bundleHash,
+        gasUsed: simulation.results?.[0]?.gasUsed || 0,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        builder: "flashbots",
+      };
+    }
   }
 
   /**

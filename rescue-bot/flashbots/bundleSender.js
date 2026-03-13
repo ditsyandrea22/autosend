@@ -1,13 +1,17 @@
 const { FlashbotsBundleProvider } = require("@flashbots/ethers-provider-bundle");
 const { ethers } = require("ethers");
-const { RPC_URL } = require("../config/env");
+const { RPC_URL, FLASHBOTS_AUTH_SIGNER } = require("../config/env");
 
 // Create a provider
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 
 async function sendBundle(wallet, tx, blockNumber) {
-  // Create a random signer for auth (required by Flashbots)
-  const authSigner = ethers.Wallet.createRandom();
+  if (!FLASHBOTS_AUTH_SIGNER) {
+    throw new Error("FLASHBOTS_AUTH_SIGNER is required in .env");
+  }
+  
+  // Create auth signer from environment - Flashbots requires authenticated relay
+  const authSigner = new ethers.Wallet(FLASHBOTS_AUTH_SIGNER);
 
   // Create the Flashbots Bundle Provider
   const flashbots = await FlashbotsBundleProvider.create(

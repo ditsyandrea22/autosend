@@ -25,6 +25,26 @@ const { LatencyMonitor } = require("../infra/latency-monitor");
 const { MempoolEngine } = require("./mempool-engine");
 
 /**
+ * Retry helper with exponential backoff
+ */
+async function retryWithBackoff(fn, maxAttempts = 6, baseDelayMs = 1000) {
+  const multipliers = [2, 3, 5, 8, 13, 21]; // Fibonacci-based multipliers
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (error) {
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+      const delay = baseDelayMs * multipliers[Math.min(attempt, multipliers.length - 1)];
+      console.log(`[Retry] Attempt ${attempt + 1} failed: ${error.message}. Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/**
  * Rescue Orchestrator - Coordinates all rescue operations
  */
 class RescueOrchestrator {
@@ -133,7 +153,7 @@ class RescueOrchestrator {
   }
 
   /**
-   * Execute rescue operation
+   * Execute rescue operation with retry logic
    */
   async executeRescue(triggerTx = null) {
     console.log("\n[Rescue Orchestrator] Starting rescue operation...");
@@ -141,57 +161,64 @@ class RescueOrchestrator {
     this.lastRescueBlock = await this.provider.getBlockNumber();
 
     try {
-      // Get gas configuration
-      const gasConfig = await this.gasPredictor.getRescueGas(0, true);
+      // Retry with exponential backoff and gas escalation
+      await retryWithBackoff(async (attempt) => {
+        console.log(`[Rescue Orchestrator] Attempt ${attempt + 1}...`);
+        
+        // Get gas configuration with escalation based on attempt
+        const gasConfig = await this.gasPredictor.getRescueGas(attempt, true);
+        console.log(`[Rescue Orchestrator] Using gas - maxFee: ${ethers.formatUnits(gasConfig.maxFeePerGas, "gwei")} gwei, priority: ${ethers.formatUnits(gasConfig.maxPriorityFeePerGas, "gwei")} gwei`);
 
-      // Build rescue bundle
-      const bundle = await this.buildRescueBundle(gasConfig);
+        // Build rescue bundle
+        const bundle = await this.buildRescueBundle(gasConfig);
 
-      if (bundle.length === 0) {
-        console.log("[Rescue Orchestrator] No assets to rescue");
-        return;
-      }
+        if (bundle.length === 0) {
+          console.log("[Rescue Orchestrator] No assets to rescue");
+          return { success: true, noAssets: true };
+        }
 
-      // Optimize bundle
-      const optimized = await this.bundleOptimizer.optimizeWithGas(bundle, this.wallet);
-      
-      console.log(`[Rescue Orchestrator] Bundle contains ${optimized.transactions.length} transactions`);
+        // Optimize bundle
+        const optimized = await this.bundleOptimizer.optimizeWithGas(bundle, this.wallet);
+        
+        console.log(`[Rescue Orchestrator] Bundle contains ${optimized.transactions.length} transactions`);
 
-      // Sign bundle
-      const signedTxs = await this.signBundle(optimized.transactions);
-      const signedBundle = this.bundleOptimizer.createSignedBundle(signedTxs);
+        // Sign bundle
+        const signedTxs = await this.signBundle(optimized.transactions);
+        const signedBundle = this.bundleOptimizer.createSignedBundle(signedTxs);
 
-      // Simulate
-      const simResult = await this.flashbotsRelay.simulateBundle(
-        this.bundleOptimizer.createSignedBundle(signedTxs),
-        this.lastRescueBlock + 1
-      );
+        // Simulate
+        const simResult = await this.flashbotsRelay.simulateBundle(
+          signedBundle,
+          this.lastRescueBlock + 1
+        );
 
-      if (!simResult.success) {
-        console.log("[Rescue Orchestrator] ⚠️ Simulation failed:", simResult.error);
-        // Continue anyway in emergency
-      }
+        if (!simResult.success) {
+          console.log("[Rescue Orchestrator] ⚠️ Simulation failed:", simResult.error);
+          throw new Error(`Simulation failed: ${simResult.error}`);
+        }
 
-      // Get target blocks
-      const targetBlocks = this.blockTargeter.getTargetBlocks(this.lastRescueBlock);
-      console.log(`[Rescue Orchestrator] Targeting blocks: ${targetBlocks.join(", ")}`);
+        // Get target blocks
+        const targetBlocks = this.blockTargeter.getTargetBlocks(this.lastRescueBlock);
+        console.log(`[Rescue Orchestrator] Targeting blocks: ${targetBlocks.join(", ")}`);
 
-      // Send to Flashbots
-      const results = await this.flashbotsRelay.sendBundleToMultipleBlocks(
-        this.bundleOptimizer.createSignedBundle(signedTxs),
-        targetBlocks
-      );
+        // Send to Flashbots
+        const results = await this.flashbotsRelay.sendBundleToMultipleBlocks(
+          signedBundle,
+          targetBlocks
+        );
 
-      // Also broadcast to other builders
-      await this.builderBroadcast.broadcast(
-        this.bundleOptimizer.createSignedBundle(signedTxs),
-        this.lastRescueBlock + 1
-      );
+        // Also broadcast to other builders
+        await this.builderBroadcast.broadcast(
+          signedBundle,
+          this.lastRescueBlock + 1
+        );
 
-      console.log("[Rescue Orchestrator] ✓ Rescue bundle sent");
+        console.log("[Rescue Orchestrator] ✓ Rescue bundle sent successfully");
+        return { success: true };
+      }, 6, 2000); // 6 max attempts, 2 second base delay
 
     } catch (error) {
-      console.error("[Rescue Orchestrator] Rescue error:", error.message);
+      console.error("[Rescue Orchestrator] Rescue error after all retries:", error.message);
     }
   }
 
@@ -302,4 +329,5 @@ class RescueOrchestrator {
 
 module.exports = {
   RescueOrchestrator,
+  retryWithBackoff,
 };

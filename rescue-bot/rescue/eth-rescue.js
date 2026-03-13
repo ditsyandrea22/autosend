@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const { NonceManager } = require("../utils/nonce-manager");
 
 /**
  * ETH Rescue - Handles ETH transfer rescue operations
@@ -7,6 +8,7 @@ class ETHRescue {
   constructor(provider, wallet) {
     this.provider = provider;
     this.wallet = wallet;
+    this.nonceManager = new NonceManager(provider, wallet.address);
   }
 
   /**
@@ -66,10 +68,17 @@ class ETHRescue {
   }
 
   /**
-   * Get next nonce
+   * Get next nonce with lock to prevent collisions
    */
   async getNonce() {
-    return await this.provider.getTransactionCount(this.wallet.address, "pending");
+    return await this.nonceManager.acquireNonce();
+  }
+
+  /**
+   * Reset nonce cache after confirmed transaction
+   */
+  resetNonceCache() {
+    this.nonceManager.resetCache();
   }
 
   /**
