@@ -1,11 +1,22 @@
 {
   "name": "autosend",
   "version": "1.0.0",
-  "description": "Ultra Wallet Rescue Bot - Monitor and rescue funds from attacked wallets using Flashbots",
-  "main": "rescue-bot/index.js",
+  "description": "Production Wallet Rescue Bot - Monitor and rescue funds from attacked wallets using Flashbots MEV infrastructure",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node rescue-bot/index.js"
+    "start": "node src/index.js",
+    "start:script": "node scripts/start.js",
+    "dev": "node --watch src/index.js",
+    "test": "echo \"No tests configured yet\" && exit 0"
   },
+  "keywords": [
+    "rescue",
+    "mev",
+    "flashbots",
+    "wallet",
+    "security",
+    "ethereum"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
