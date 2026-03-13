@@ -69,7 +69,7 @@ class RelayManager {
       const { ethers } = require('ethers');
       
       // Get provider and wallet from environment or create temp
-      const provider = new ethers.JsonRpcProvider(process.env.ETH_RPC);
+      const provider = new ethers.providers.JsonRpcProvider(process.env.ETH_RPC);
       const wallet = new ethers.Wallet(process.env.FLASHBOTS_SIGNING_KEY || '', provider);
 
       const flashbots = await FlashbotsBundleProvider.create(
@@ -235,7 +235,7 @@ class RelayManager {
       }
 
       const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
-        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+        (await (new ethers.providers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
       
       const response = await fetch(`${endpoint}/v1/bundles`, {
         method: 'POST',
@@ -277,7 +277,7 @@ class RelayManager {
       }
 
       const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
-        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+        (await (new ethers.providers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -314,7 +314,7 @@ class RelayManager {
       const endpoint = 'https://beaverbuild.org';
       
       const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
-        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+        (await (new ethers.providers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
 
       const response = await fetch(`${endpoint}/rpc`, {
         method: 'POST',

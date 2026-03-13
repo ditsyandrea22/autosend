@@ -63,10 +63,12 @@ class RescueBot {
     }
 
     const mainChain = Object.keys(this.providers)[0];
-    if (mainChain) {
-      this.wallets[mainChain] = new ethers.Wallet(privateKey, this.providers[mainChain]);
-      logger.info(`[RescueBot] Wallet initialized: ${this.wallets[mainChain].address}`);
+    if (!mainChain) {
+      const enabledChainNames = this.chains.map(c => c.name).join(', ');
+      throw new Error(`No RPC providers available. Please configure at least one chain RPC in .env. Enabled chains: ${enabledChainNames}`);
     }
+    this.wallets[mainChain] = new ethers.Wallet(privateKey, this.providers[mainChain]);
+    logger.info(`[RescueBot] Wallet initialized: ${this.wallets[mainChain].address}`);
 
     // Initialize orchestrator
     this.orchestrator = new RescueOrchestrator(this.providers, this.wallets);
@@ -105,28 +107,38 @@ class RescueBot {
       const wallet = this.wallets[chainName];
       if (!wallet) continue;
 
-      // Create mempool engine
-      const mempoolEngine = new MempoolEngine(provider, wallet, this.monitoredWallets);
-      mempoolEngine.on('attack', async (tx) => {
-        await this.handleAttack(tx, chainName);
-      });
-      mempoolEngine.on('error', (error) => {
-        logger.error(`[RescueBot] Mempool error on ${chainName}:`, error);
-      });
+      try {
+        // Create mempool engine
+        const mempoolEngine = new MempoolEngine(provider, wallet, this.monitoredWallets);
+        mempoolEngine.on('attack', async (tx) => {
+          await this.handleAttack(tx, chainName);
+        });
+        mempoolEngine.on('error', (error) => {
+          logger.error(`[RescueBot] Mempool error on ${chainName}:`, error);
+        });
 
-      // Start monitoring
-      await mempoolEngine.start();
-      this.mempoolEngines[chainName] = mempoolEngine;
+        // Start monitoring
+        await mempoolEngine.start();
+        this.mempoolEngines[chainName] = mempoolEngine;
+      } catch (error) {
+        logger.error(`[RescueBot] Failed to start mempool engine for ${chainName}:`, error);
+        continue;
+      }
 
-      // Create block engine for confirmation monitoring
-      const blockEngine = new BlockEngine(provider, chainName);
-      blockEngine.on('block', (blockNumber) => {
-        this.stats.blocksProcessed++;
-        metrics.blocksProcessed.inc();
-      });
-      
-      await blockEngine.start();
-      this.blockEngines[chainName] = blockEngine;
+      try {
+        // Create block engine for confirmation monitoring
+        const blockEngine = new BlockEngine(provider, chainName);
+        blockEngine.on('block', (blockNumber) => {
+          this.stats.blocksProcessed++;
+          metrics.blocksProcessed.inc();
+        });
+        
+        await blockEngine.start();
+        this.blockEngines[chainName] = blockEngine;
+      } catch (error) {
+        logger.error(`[RescueBot] Failed to start block engine for ${chainName}:`, error);
+        // Continue without block engine - mempool still works
+      }
     }
 
     this.isMonitoring = true;
@@ -233,7 +245,7 @@ async function main() {
       process.exit(0);
     });
   } catch (error) {
-    logger.error('[RescueBot] Fatal error:', error);
+    logger.error('[RescueBot] Fatal error: %s\n%s', error.message, error.stack);
     process.exit(1);
   }
 }

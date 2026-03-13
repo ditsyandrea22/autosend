@@ -36,7 +36,7 @@ class ProviderCluster {
    */
   initializeProviders() {
     this.providers = this.urls.map((url, index) => {
-      const provider = new ethers.JsonRpcProvider({
+      const provider = new ethers.providers.JsonRpcProvider({
         url,
         timeout: this.options.timeout,
       });
@@ -238,7 +238,7 @@ class ProviderCluster {
    * Add new provider
    */
   addProvider(url) {
-    const provider = new ethers.JsonRpcProvider({
+    const provider = new ethers.providers.JsonRpcProvider({
       url,
       timeout: this.options.timeout,
     });

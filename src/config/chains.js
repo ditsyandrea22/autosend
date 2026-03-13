@@ -145,7 +145,7 @@ function createProvider(chainName) {
   if (!config || !config.rpc) {
     return null;
   }
-  return new ethers.JsonRpcProvider(config.rpc);
+  return new ethers.providers.JsonRpcProvider(config.rpc);
 }
 
 /**
@@ -156,7 +156,7 @@ function createFallbackProvider(chainName) {
   if (!config || !config.rpcFallback) {
     return null;
   }
-  return new ethers.JsonRpcProvider(config.rpcFallback);
+  return new ethers.providers.JsonRpcProvider(config.rpcFallback);
 }
 
 module.exports = {
