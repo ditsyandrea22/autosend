@@ -10,7 +10,7 @@ const { sleep } = require('../utils/sleep');
 const { detectWalletDrain } = require('../detection/drainDetector');
 const { detectERC20Transfer } = require('../detection/erc20Detector');
 const { detectNFTTransfer } = require('../detection/nftDetector');
-const { metrics } = require('../monitoring/metrics');
+const metrics = require('../monitoring/metrics');
 
 // Known drainer function selectors
 const DRAINER_SELECTORS = [
@@ -42,7 +42,10 @@ class MempoolEngine extends EventEmitter {
       pendingChecked: 0,
       attacksDetected: 0,
       errors: 0,
+      filterErrors: 0,
     };
+    this.filterRecreateAttempts = 0;
+    this.maxFilterRecreateAttempts = 5;
   }
 
   /**
@@ -57,8 +60,13 @@ class MempoolEngine extends EventEmitter {
     logger.info('[MempoolEngine] Starting mempool monitoring...');
 
     try {
-      // Subscribe to pending transactions
+      // Subscribe to pending transactions with error handling
       this.provider.on('pending', (txHash) => this.handlePendingTransaction(txHash));
+      
+      // Add error listener to handle filter errors (common with HTTP providers)
+      this.provider.on('error', (error) => {
+        this.handleProviderError(error);
+      });
 
       // Start periodic cleanup
       this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
@@ -73,6 +81,74 @@ class MempoolEngine extends EventEmitter {
   }
 
   /**
+   * Handle provider errors (e.g., filter not found)
+   * This is common when using HTTP RPC providers
+   */
+  handleProviderError(error) {
+    // Check for filter not found error
+    if (error.message && error.message.includes('filter not found')) {
+      logger.warn('[MempoolEngine] Filter timeout detected, attempting to recreate...');
+      this.stats.filterErrors++;
+      
+      if (this.filterRecreateAttempts < this.maxFilterRecreateAttempts) {
+        this.filterRecreateAttempts++;
+        
+        // Remove old listeners and resubscribe
+        this.provider.removeAllListeners('pending');
+        
+        setTimeout(() => {
+          try {
+            this.provider.on('pending', (txHash) => this.handlePendingTransaction(txHash));
+            logger.info('[MempoolEngine] Filter recreated successfully');
+            this.filterRecreateAttempts = 0;
+          } catch (err) {
+            logger.error('[MempoolEngine] Failed to recreate filter:', err);
+          }
+        }, 1000); // Wait 1 second before recreating
+      } else {
+        logger.error('[MempoolEngine] Too many filter recreate attempts, switching to polling mode');
+        this.startPollingMode();
+      }
+    } else {
+      logger.error('[MempoolEngine] Provider error:', error);
+      this.stats.errors++;
+    }
+  }
+
+  /**
+   * Fallback to polling mode when WebSocket filter fails
+   */
+  startPollingMode() {
+    logger.info('[MempoolEngine] Starting polling fallback mode...');
+    
+    let lastBlock = 0;
+    
+    const pollPending = async () => {
+      try {
+        // Get latest block to track new blocks
+        const block = await this.provider.getBlockNumber();
+        
+        if (block > lastBlock) {
+          lastBlock = block;
+          // Poll pending transactions via RPC
+          const pendingTx = await this.provider.send('eth_getPendingTransactions', []);
+          
+          for (const tx of pendingTx) {
+            if (tx && tx.hash) {
+              await this.handlePendingTransaction(tx.hash);
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('[MempoolEngine] Polling error:', error);
+      }
+    };
+    
+    // Poll every 2 seconds
+    this.pollingInterval = setInterval(pollPending, 2000);
+  }
+
+  /**
    * Stop mempool monitoring
    */
   async stop() {
@@ -84,10 +160,16 @@ class MempoolEngine extends EventEmitter {
 
     // Remove listener
     this.provider.removeAllListeners('pending');
+    this.provider.removeAllListeners('error');
 
     // Clear intervals
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
+    }
+    
+    // Clear polling interval if active
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
     }
 
     this.isRunning = false;

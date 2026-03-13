@@ -3,7 +3,8 @@
  * Supports Ethereum, Base, Polygon, and BSC
  */
 
-const { ethers } = require('ethers');
+const { ethers, WebSocketProvider } = require('ethers');
+const { logger } = require('../utils/logger');
 
 /**
  * All supported chains configuration
@@ -14,7 +15,9 @@ const CHAINS = {
     chainId: 1,
     chainIdHex: '0x1',
     rpc: process.env.ETH_RPC || '',
+    wsRpc: process.env.ETH_WS_RPC || '',
     rpcFallback: process.env.ETH_RPC_FALLBACK,
+    wsRpcFallback: process.env.ETH_WS_RPC_FALLBACK,
     explorer: 'https://etherscan.io',
     explorerApi: 'https://api.etherscan.io/api',
     nativeCurrency: {
@@ -39,7 +42,9 @@ const CHAINS = {
     chainId: 8453,
     chainIdHex: '0x2105',
     rpc: process.env.BASE_RPC || '',
+    wsRpc: process.env.BASE_WS_RPC || '',
     rpcFallback: process.env.BASE_RPC_FALLBACK,
+    wsRpcFallback: process.env.BASE_WS_RPC_FALLBACK,
     explorer: 'https://basescan.org',
     explorerApi: 'https://api.basescan.org/api',
     nativeCurrency: {
@@ -64,7 +69,9 @@ const CHAINS = {
     chainId: 137,
     chainIdHex: '0x89',
     rpc: process.env.POLYGON_RPC || '',
+    wsRpc: process.env.POLYGON_WS_RPC || '',
     rpcFallback: process.env.POLYGON_RPC_FALLBACK,
+    wsRpcFallback: process.env.POLYGON_WS_RPC_FALLBACK,
     explorer: 'https://polygonscan.com',
     explorerApi: 'https://api.polygonscan.com/api',
     nativeCurrency: {
@@ -89,7 +96,9 @@ const CHAINS = {
     chainId: 56,
     chainIdHex: '0x38',
     rpc: process.env.BSC_RPC || '',
+    wsRpc: process.env.BSC_WS_RPC || '',
     rpcFallback: process.env.BSC_RPC_FALLBACK,
+    wsRpcFallback: process.env.BSC_WS_RPC_FALLBACK,
     explorer: 'https://bscscan.com',
     explorerApi: 'https://api.bscscan.com/api',
     nativeCurrency: {
@@ -139,13 +148,49 @@ function getEnabledChains() {
 
 /**
  * Create ethers provider for a chain
+ * Prefers WebSocket for stable mempool monitoring, falls back to HTTP
  */
-function createProvider(chainName) {
+async function createProvider(chainName) {
   const config = getChainConfig(chainName);
-  if (!config || !config.rpc) {
+  if (!config) {
     return null;
   }
-  return new ethers.providers.JsonRpcProvider(config.rpc);
+
+  // Prefer WebSocket for mempool monitoring (more stable for pending tx events)
+  if (config.wsRpc) {
+    try {
+      const wsProvider = new WebSocketProvider(config.wsRpc);
+      
+      // Test connection by getting chain ID
+      await wsProvider.getNetwork();
+      
+      logger.info(`[chains] Using WebSocket provider for ${chainName}`);
+      return wsProvider;
+    } catch (error) {
+      logger.warn(`[chains] WebSocket connection failed for ${chainName}:`, error.message);
+      logger.info(`[chains] Falling back to HTTP provider for ${chainName}`);
+    }
+  } else {
+    logger.info(`[chains] No WebSocket configured for ${chainName}, using HTTP`);
+  }
+
+  // Fall back to HTTP RPC
+  if (config.rpc) {
+    logger.info(`[chains] Using HTTP provider for ${chainName}`);
+    const httpProvider = new ethers.JsonRpcProvider(config.rpc);
+    
+    // Verify connection works
+    try {
+      await httpProvider.getNetwork();
+    } catch (error) {
+      logger.error(`[chains] HTTP provider also failed for ${chainName}:`, error.message);
+      return null;
+    }
+    
+    return httpProvider;
+  }
+
+  return null;
 }
 
 /**
@@ -153,10 +198,21 @@ function createProvider(chainName) {
  */
 function createFallbackProvider(chainName) {
   const config = getChainConfig(chainName);
+  
+  // Try WebSocket fallback first
+  if (config?.wsRpcFallback) {
+    try {
+      return new WebSocketProvider(config.wsRpcFallback);
+    } catch (error) {
+      logger.warn(`[chains] Failed to create WebSocket fallback for ${chainName}:`, error.message);
+    }
+  }
+  
+  // Fall back to HTTP
   if (!config || !config.rpcFallback) {
     return null;
   }
-  return new ethers.providers.JsonRpcProvider(config.rpcFallback);
+  return new ethers.JsonRpcProvider(config.rpcFallback);
 }
 
 module.exports = {

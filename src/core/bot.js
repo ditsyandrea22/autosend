@@ -12,7 +12,7 @@ const { MempoolEngine } = require('./mempoolEngine');
 const { BlockEngine } = require('./blockEngine');
 const { RescueOrchestrator } = require('./orchestrator');
 const { startDashboard } = require('../monitoring/dashboardServer');
-const { metrics } = require('../monitoring/metrics');
+const metrics = require('../monitoring/metrics');
 const { sendAlert } = require('../alerts/telegram');
 
 class RescueBot {
@@ -47,7 +47,7 @@ class RescueBot {
 
     // Initialize providers for each chain
     for (const chain of this.chains) {
-      const provider = createProvider(chain.name);
+      const provider = await createProvider(chain.name);
       if (provider) {
         this.providers[chain.name] = provider;
         logger.info(`[RescueBot] Provider created for ${chain.name}`);
