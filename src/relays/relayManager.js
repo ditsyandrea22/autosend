@@ -6,6 +6,7 @@
 const { logger } = require('../utils/logger');
 const { getRelaysForChain } = require('../config/relays');
 const { signBundle } = require('../bundle/bundleBuilder');
+const { ethers } = require('ethers');
 
 class RelayManager {
   constructor() {
@@ -225,33 +226,120 @@ class RelayManager {
    * Send to bloXroute
    */
   async sendBloxroute(relay, signedTxs) {
-    // bloXroute implementation
-    return {
-      success: false,
-      error: 'bloXroute not implemented',
-    };
+    try {
+      const endpoint = process.env.BLOXROUTE_ENDPOINT || 'https://api.bloxroute.com';
+      const authToken = process.env.BLOXROUTE_AUTH_TOKEN;
+      
+      if (!authToken) {
+        return { success: false, error: 'Bloxroute auth token not configured' };
+      }
+
+      const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
+        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+      
+      const response = await fetch(`${endpoint}/v1/bundles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authToken,
+        },
+        body: JSON.stringify({
+          txs: signedTxs,
+          blockNumber: blockNumber + 1,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          success: true,
+          hash: result.bundleHash || result.hash,
+          blockNumber: blockNumber + 1,
+        };
+      }
+
+      return { success: false, error: `bloXroute error: ${response.status}` };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   /**
    * Send to Eden
    */
   async sendEden(relay, signedTxs) {
-    // Eden implementation
-    return {
-      success: false,
-      error: 'Eden not implemented',
-    };
+    try {
+      const endpoint = process.env.EDEN_ENDPOINT || 'https://api.edennetwork.io/v1/bundle';
+      const apiKey = process.env.EDEN_API_KEY;
+      
+      if (!apiKey) {
+        return { success: false, error: 'Eden API key not configured' };
+      }
+
+      const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
+        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          txs: signedTxs,
+          blockNumber: blockNumber + 1,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          success: true,
+          hash: result.bundleHash || result.id,
+          blockNumber: blockNumber + 1,
+        };
+      }
+
+      return { success: false, error: `Eden error: ${response.status}` };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   /**
    * Send to Beaverbuild
    */
   async sendBeaverbuild(relay, signedTxs) {
-    // Beaverbuild implementation
-    return {
-      success: false,
-      error: 'Beaverbuild not implemented',
-    };
+    try {
+      const endpoint = 'https://beaverbuild.org';
+      
+      const blockNumber = await relay.provider?.provider?.getBlockNumber() || 
+        (await (new ethers.JsonRpcProvider(process.env.ETH_RPC)).getBlockNumber());
+
+      const response = await fetch(`${endpoint}/rpc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_sendBundle',
+          params: [signedTxs, `0x${(blockNumber + 1).toString(16)}`],
+          id: 1,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          success: true,
+          hash: result.result?.bundleHash || result.result,
+          blockNumber: blockNumber + 1,
+        };
+      }
+
+      return { success: false, error: `Beaverbuild error: ${response.status}` };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   /**

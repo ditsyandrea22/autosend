@@ -46,13 +46,33 @@ function detectWalletDrain(tx, walletAddress) {
 
   // Check for direct ETH transfer (no data or simple transfer)
   if (!tx.data || tx.data === '0x') {
-    return {
-      type: ATTACK_PATTERNS.DIRECT_TRANSFER,
-      detected: true,
-      value: tx.value,
-      to: tx.to,
-      from: tx.from,
-    };
+    // Get safe destination from environment (rescue destination is considered safe)
+    const safeDestinations = [
+      process.env.RESCUE_DESTINATION?.toLowerCase(),
+      process.env.RESCUE_ADDRESS?.toLowerCase(),
+    ].filter(Boolean);
+
+    const toAddress = tx.to?.toLowerCase();
+    
+    // If transfer is to a known safe destination, it's not an attack
+    if (toAddress && safeDestinations.includes(toAddress)) {
+      return null;
+    }
+
+    // If there's no destination (burn address) or unknown destination, it's suspicious
+    // But only flag as attack if value is above threshold (prevents false positives on small tests)
+    const valueEth = tx.value ? ethers.formatEther(tx.value) : '0';
+    const minValueThreshold = parseFloat(process.env.ATTACK_THRESHOLD_ETH || '0.01');
+    
+    if (parseFloat(valueEth) >= minValueThreshold) {
+      return {
+        type: ATTACK_PATTERNS.DIRECT_TRANSFER,
+        detected: true,
+        value: tx.value,
+        to: tx.to,
+        from: tx.from,
+      };
+    }
   }
 
   return null;

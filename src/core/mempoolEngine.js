@@ -208,10 +208,11 @@ class MempoolEngine extends EventEmitter {
    * Check if transaction involves a specific wallet
    */
   hasInteraction(tx, walletAddress) {
-    const from = tx.from ? tx.from.toLowerCase() : walletAddress;
+    const from = tx.from ? tx.from.toLowerCase() : null;
     const to = tx.to ? tx.to.toLowerCase() : null;
+    const wallet = walletAddress.toLowerCase();
     
-    return from === walletAddress || to === walletAddress;
+    return from === wallet || to === wallet;
   }
 
   /**

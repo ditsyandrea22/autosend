@@ -159,12 +159,14 @@ class RescuePlanner {
     const transactions = [];
     let nonce = startNonce;
 
-    // Check common NFT contracts
-    const nftAddresses = [
-      '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D', // BAYC
-      '0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB', // CryptoPunks
-      '0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85', // ENS
-    ];
+    // Get NFT addresses from config or use common ones
+    const nftAddresses = process.env.NFT_CONTRACTS 
+      ? process.env.NFT_CONTRACTS.split(',').map(a => a.trim())
+      : [
+          '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D', // BAYC
+          '0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB', // CryptoPunks
+          '0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85', // ENS
+        ];
 
     const erc721ABI = [
       'function ownerOf(uint256 tokenId) view returns (address)',
